@@ -1,0 +1,12 @@
+# Python junk
+__pycache__/
+*.pyc
+
+# Env & secrets
+.env
+credentials/service_account.json
+encoded.txt
+
+# Streamlit cache
+frontend/.streamlit/
+frontend/__pycache__/
