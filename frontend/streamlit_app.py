@@ -1,21 +1,27 @@
-import streamlit as st
+import os
 import requests
+import streamlit as st
 
-st.title("TailorTalk AI")
-st.write("Chat with your calendar assistant!")
 
-if "history" not in st.session_state:
-    st.session_state.history = []
+BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000/chat")
 
-for msg in st.session_state.history:
-    role, content = msg
-    st.chat_message(role).write(content)
 
-user_input = st.chat_input("Ask me anything...")
+st.set_page_config(page_title="TailorTalk AI", layout="centered")
+st.title("🧵 TailorTalk AI Assistant")
+st.markdown("Chat with your calendar. Schedule meetings using natural language!")
 
-if user_input:
-    st.session_state.history.append(("user", user_input))
-    response = requests.post("http://localhost:8000/chat", json={"message": user_input})
-    reply = response.json()["response"]
-    st.session_state.history.append(("assistant", reply))
-    st.chat_message("assistant").write(reply)
+
+user_input = st.text_input("💬 Enter your request:", placeholder="e.g. Schedule a meeting tomorrow at 9 PM")
+
+
+if st.button("Ask TailorTalk") and user_input.strip():
+    try:
+        with st.spinner("Talking to TailorTalk..."):
+            response = requests.post(BACKEND_URL, json={"message": user_input})
+            if response.status_code == 200:
+                output = response.json().get("output", "✅ Request completed.")
+                st.success(output)
+            else:
+                st.error(f"❌ Error {response.status_code}: {response.text}")
+    except Exception as e:
+        st.error(f"❌ Could not connect to backend: {e}")
