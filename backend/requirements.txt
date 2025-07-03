@@ -6,3 +6,4 @@ google-auth
 google-auth-oauthlib
 dateparser
 langchain
+langchain-google-genai
