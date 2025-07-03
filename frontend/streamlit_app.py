@@ -1,27 +1,31 @@
 import os
 import requests
 import streamlit as st
+from dotenv import load_dotenv
 
+load_dotenv()
 
-BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000/chat")
+st.set_page_config(page_title="TailorTalk AI", page_icon="🧵", layout="centered")
 
-
-st.set_page_config(page_title="TailorTalk AI", layout="centered")
-st.title("🧵 TailorTalk AI Assistant")
+st.markdown("<h1 style='text-align: center;'>🧵 TailorTalk AI Assistant</h1>", unsafe_allow_html=True)
 st.markdown("Chat with your calendar. Schedule meetings using natural language!")
 
+# Input box
+user_input = st.text_input("💬 Enter your request:", placeholder="e.g., Schedule a meeting at 10 AM tomorrow")
 
-user_input = st.text_input("💬 Enter your request:", placeholder="e.g. Schedule a meeting tomorrow at 9 PM")
-
-
+# On button click
 if st.button("Ask TailorTalk") and user_input.strip():
-    try:
-        with st.spinner("Talking to TailorTalk..."):
-            response = requests.post(BACKEND_URL, json={"message": user_input})
-            if response.status_code == 200:
-                output = response.json().get("output", "✅ Request completed.")
-                st.success(output)
+    with st.spinner("⏳ Thinking..."):
+        try:
+            backend_url = os.getenv("BACKEND_URL")  # from Railway env var
+            if not backend_url:
+                st.error("❌ BACKEND_URL environment variable not set.")
             else:
-                st.error(f"❌ Error {response.status_code}: {response.text}")
-    except Exception as e:
-        st.error(f"❌ Could not connect to backend: {e}")
+                response = requests.post(f"{backend_url}/chat", json={"message": user_input})
+                if response.status_code == 200:
+                    output = response.json().get("output", "✅ Request completed.")
+                    st.markdown(output, unsafe_allow_html=True)
+                else:
+                    st.error(f"❌ Backend error: {response.status_code} - {response.text}")
+        except Exception as e:
+            st.error(f"❌ Exception: {e}")
