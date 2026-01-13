@@ -1,8 +1,8 @@
 import os
-from datetime import datetime
 from dotenv import load_dotenv
-from calendar_utils import book_event, check_availability
 from dateparser import parse as parse_date
+
+from calendar_utils import book_event, check_availability
 
 from langchain.tools import StructuredTool
 from langchain.agents import AgentExecutor, create_openai_functions_agent
@@ -12,10 +12,9 @@ from pydantic import BaseModel, Field
 
 load_dotenv()
 
-
-# ----------------------------
-# Pydantic schema for booking
-# ----------------------------
+# ======================================================
+# Input schema for booking tool
+# ======================================================
 class BookingInput(BaseModel):
     summary: str = Field(
         default="General Meeting",
@@ -30,10 +29,9 @@ class BookingInput(BaseModel):
         description="End time (e.g., 'tomorrow at 11 PM')"
     )
 
-
-# ----------------------------
+# ======================================================
 # Tool: Book meeting
-# ----------------------------
+# ======================================================
 def book_meeting(
     summary: str = "General Meeting",
     start_time: str | None = None,
@@ -63,7 +61,11 @@ def book_meeting(
         if not start or not end:
             return "❌ Couldn't understand the provided time. Please try again."
 
-        event = book_event(summary, start.isoformat(), end.isoformat())
+        event = book_event(
+            summary,
+            start.isoformat(),
+            end.isoformat()
+        )
 
         start_fmt = start.astimezone().strftime("%b %d, %I:%M %p")
         end_fmt = end.astimezone().strftime("%I:%M %p")
@@ -77,10 +79,9 @@ def book_meeting(
     except Exception as e:
         return f"❌ Booking failed: {str(e)}"
 
-
-# ----------------------------
-# Tool: Check calendar (NO PARAMS)
-# ----------------------------
+# ======================================================
+# Tool: Check calendar (NO params – IMPORTANT)
+# ======================================================
 def check_calendar() -> str:
     try:
         events = check_availability()
@@ -96,22 +97,21 @@ def check_calendar() -> str:
     except Exception as e:
         return f"❌ Calendar check failed: {str(e)}"
 
-
-# ----------------------------
-# LLM (Gemini)
-# ----------------------------
+# ======================================================
+# Gemini LLM (CRITICAL FIX INCLUDED)
+# ======================================================
 llm = ChatGoogleGenerativeAI(
     model="models/gemini-1.5-flash",
     google_api_key=os.getenv("GEMINI_API_KEY"),
     api_version="v1",
     temperature=0,
     task_type="conversational",
+    convert_system_message_to_human=True  # 🔥 REQUIRED FIX
 )
 
-
-# ----------------------------
+# ======================================================
 # Tools
-# ----------------------------
+# ======================================================
 tools = [
     StructuredTool.from_function(
         func=book_meeting,
@@ -126,48 +126,45 @@ tools = [
     ),
 ]
 
-
-# ----------------------------
+# ======================================================
 # Prompt
-# ----------------------------
+# ======================================================
 prompt = ChatPromptTemplate.from_messages(
     [
         (
             "system",
             "You are TailorTalk, an AI assistant that helps users book meetings and "
             "check calendars. You understand natural language like "
-            "'tomorrow at 10 PM IST'. Always include the calendar link when booking.",
+            "'tomorrow at 10 PM IST'. Always include the calendar link when booking."
         ),
         ("user", "{input}"),
-        ("assistant", "{agent_scratchpad}"),
+        ("assistant", "{agent_scratchpad}")
     ]
 )
 
-
-# ----------------------------
+# ======================================================
 # Agent
-# ----------------------------
+# ======================================================
 agent_chain = create_openai_functions_agent(
     llm=llm,
     tools=tools,
-    prompt=prompt,
+    prompt=prompt
 )
 
 agent = AgentExecutor.from_agent_and_tools(
     agent=agent_chain,
     tools=tools,
     verbose=True,
-    handle_parsing_errors=True,
+    handle_parsing_errors=True
 )
 
-
-# ----------------------------
-# Entry point
-# ----------------------------
+# ======================================================
+# Entry function called by FastAPI
+# ======================================================
 def handle_intent(user_input: str) -> str:
     try:
         result = agent.invoke({"input": user_input})
         return result["output"]
     except Exception as e:
         print("❌ LangChain error:", e)
-        return "Something went wrong. Please try again later."
+        return f"❌ Backend error: {str(e)}"
