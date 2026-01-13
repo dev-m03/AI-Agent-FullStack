@@ -28,7 +28,7 @@ Built with **FastAPI**, **LangChain**, **Streamlit**, and **Gemini API**, Tailor
 ## 🌐 Live Links
 
 - **Frontend**: [https://tailortalk-ai-fe.streamlit.app](https://tailortalk-ai-fe.streamlit.app)
-- **Backend**: [https://tailor-talk-backend.up.railway.app](https://tailor-talk-backend.up.railway.app)
+- **Backend**: [https://ai-agent-fullstack.onrender.com](https://ai-agent-fullstack.onrender.com)
 
 ---
 
