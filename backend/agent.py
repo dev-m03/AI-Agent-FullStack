@@ -98,15 +98,13 @@ def check_calendar() -> str:
         return f"❌ Calendar check failed: {str(e)}"
 
 # ======================================================
-# Gemini LLM (CRITICAL FIX INCLUDED)
+# Gemini LLM (STABLE + SUPPORTED)
 # ======================================================
 llm = ChatGoogleGenerativeAI(
-    model="models/gemini-1.5-flash",
+    model="gemini-pro",                     # ✅ supported by LangChain
     google_api_key=os.getenv("GEMINI_API_KEY"),
-    api_version="v1",
     temperature=0,
-    task_type="conversational",
-    convert_system_message_to_human=True  # 🔥 REQUIRED FIX
+    convert_system_message_to_human=True    # 🔥 REQUIRED
 )
 
 # ======================================================
