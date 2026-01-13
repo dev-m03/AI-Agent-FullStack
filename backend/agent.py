@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field
 load_dotenv()
 
 # ======================================================
-# Input schema for booking tool
+# Tool input schema
 # ======================================================
 class BookingInput(BaseModel):
     summary: str = Field(
@@ -80,7 +80,7 @@ def book_meeting(
         return f"❌ Booking failed: {str(e)}"
 
 # ======================================================
-# Tool: Check calendar (NO params – IMPORTANT)
+# Tool: Check calendar (NO parameters)
 # ======================================================
 def check_calendar() -> str:
     try:
@@ -98,13 +98,14 @@ def check_calendar() -> str:
         return f"❌ Calendar check failed: {str(e)}"
 
 # ======================================================
-# Gemini LLM (STABLE + SUPPORTED)
+# Gemini LLM — FINAL FIX (THIS IS CRITICAL)
 # ======================================================
 llm = ChatGoogleGenerativeAI(
-    model="gemini-pro",                     # ✅ supported by LangChain
+    model="models/gemini-1.5-flash",     # ✅ v1-only model
     google_api_key=os.getenv("GEMINI_API_KEY"),
     temperature=0,
-    convert_system_message_to_human=True    # 🔥 REQUIRED
+    convert_system_message_to_human=True,
+    api_version="v1"                     # 🔥 ABSOLUTELY REQUIRED
 )
 
 # ======================================================
@@ -157,7 +158,7 @@ agent = AgentExecutor.from_agent_and_tools(
 )
 
 # ======================================================
-# Entry function called by FastAPI
+# Entry point called by FastAPI
 # ======================================================
 def handle_intent(user_input: str) -> str:
     try:
