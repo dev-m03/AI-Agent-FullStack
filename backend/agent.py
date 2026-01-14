@@ -59,7 +59,7 @@ def book_meeting(
         )
 
         if not start or not end:
-            return "❌ Couldn't understand the provided time. Please try again."
+            return "❌ Couldn't understand the provided time."
 
         event = book_event(
             summary,
@@ -98,14 +98,13 @@ def check_calendar() -> str:
         return f"❌ Calendar check failed: {str(e)}"
 
 # ======================================================
-# Gemini LLM — FINAL FIX (THIS IS CRITICAL)
+# Gemini LLM — FINAL & ONLY WORKING CONFIG
 # ======================================================
 llm = ChatGoogleGenerativeAI(
-    model="models/gemini-1.5-flash",     # ✅ v1-only model
+    model="models/gemini-1.0-pro",      # ✅ ONLY valid model for v1beta
     google_api_key=os.getenv("GEMINI_API_KEY"),
     temperature=0,
-    convert_system_message_to_human=True,
-    api_version="v1"                     # 🔥 ABSOLUTELY REQUIRED
+    convert_system_message_to_human=True
 )
 
 # ======================================================
@@ -115,13 +114,13 @@ tools = [
     StructuredTool.from_function(
         func=book_meeting,
         name="book_meeting",
-        description="Book a meeting using summary, start_time, and end_time (natural language supported).",
+        description="Book a meeting using summary, start_time, and end_time.",
         args_schema=BookingInput,
     ),
     StructuredTool.from_function(
         func=check_calendar,
         name="check_calendar",
-        description="Check your upcoming Google Calendar events.",
+        description="Check upcoming Google Calendar events.",
     ),
 ]
 
@@ -133,8 +132,7 @@ prompt = ChatPromptTemplate.from_messages(
         (
             "system",
             "You are TailorTalk, an AI assistant that helps users book meetings and "
-            "check calendars. You understand natural language like "
-            "'tomorrow at 10 PM IST'. Always include the calendar link when booking."
+            "check calendars. You understand natural language times."
         ),
         ("user", "{input}"),
         ("assistant", "{agent_scratchpad}")
@@ -158,7 +156,7 @@ agent = AgentExecutor.from_agent_and_tools(
 )
 
 # ======================================================
-# Entry point called by FastAPI
+# Entry point for FastAPI
 # ======================================================
 def handle_intent(user_input: str) -> str:
     try:
