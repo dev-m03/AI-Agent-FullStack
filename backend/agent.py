@@ -9,29 +9,44 @@ from calendar_utils import book_event, check_availability
 load_dotenv()
 
 # ======================================================
-# Configure Gemini (OFFICIAL SDK – STABLE)
+# Configure Gemini (official SDK)
 # ======================================================
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 
-model = genai.GenerativeModel("gemini-1.5-flash")
+# ======================================================
+# Pick a working text model dynamically (NO HARDCODE)
+# ======================================================
+def get_working_model():
+    for m in genai.list_models():
+        if "generateContent" in m.supported_generation_methods:
+            # Prefer Gemini 1.5 Flash if available
+            if "gemini-1.5-flash" in m.name:
+                return genai.GenerativeModel(m.name)
+    # Fallback: first available text model
+    for m in genai.list_models():
+        if "generateContent" in m.supported_generation_methods:
+            return genai.GenerativeModel(m.name)
+    raise RuntimeError("No usable Gemini model found")
+
+model = get_working_model()
 
 # ======================================================
-# Main intent handler (called by FastAPI)
+# Main intent handler
 # ======================================================
 def handle_intent(user_input: str) -> str:
     try:
         prompt = f"""
-You are an assistant that helps users with Google Calendar.
+You help users manage Google Calendar.
 
-User input:
+User message:
 "{user_input}"
 
-Decide intent and respond ONLY in valid JSON.
+Respond ONLY in valid JSON.
 
-If the user wants to check calendar:
+If user wants to check calendar:
 {{ "intent": "check" }}
 
-If the user wants to book a meeting:
+If user wants to book a meeting:
 {{
   "intent": "book",
   "summary": "meeting title",
@@ -39,29 +54,25 @@ If the user wants to book a meeting:
   "end_time": "natural language time"
 }}
 
-Return ONLY JSON. No markdown. No explanation.
+Return ONLY JSON.
 """
 
         response = model.generate_content(prompt)
         data = json.loads(response.text.strip())
 
-        # -----------------------
-        # CHECK CALENDAR
-        # -----------------------
+        # ---------------- CHECK CALENDAR ----------------
         if data["intent"] == "check":
             events = check_availability()
             if not events:
                 return "✅ You're free!"
 
             return "\n".join(
-                f"• **{e.get('summary', 'No title')}** at "
+                f"• **{e.get('summary','No title')}** at "
                 f"`{e['start'].get('dateTime', e['start'].get('date'))}`"
                 for e in events
             )
 
-        # -----------------------
-        # BOOK MEETING
-        # -----------------------
+        # ---------------- BOOK MEETING ----------------
         if data["intent"] == "book":
             start = parse_date(data["start_time"])
             end = parse_date(data["end_time"])
