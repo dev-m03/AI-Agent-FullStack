@@ -1,167 +1,87 @@
 import os
+import json
 from dotenv import load_dotenv
 from dateparser import parse as parse_date
+import google.generativeai as genai
 
 from calendar_utils import book_event, check_availability
-
-from langchain.tools import StructuredTool
-from langchain.agents import AgentExecutor, create_openai_functions_agent
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_core.prompts import ChatPromptTemplate
-from pydantic import BaseModel, Field
 
 load_dotenv()
 
 # ======================================================
-# Tool input schema
+# Configure Gemini (OFFICIAL SDK – STABLE)
 # ======================================================
-class BookingInput(BaseModel):
-    summary: str = Field(
-        default="General Meeting",
-        description="Meeting title or purpose"
-    )
-    start_time: str = Field(
-        ...,
-        description="Start time (e.g., 'tomorrow at 10 PM')"
-    )
-    end_time: str = Field(
-        ...,
-        description="End time (e.g., 'tomorrow at 11 PM')"
-    )
+genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+
+model = genai.GenerativeModel("gemini-1.5-flash")
 
 # ======================================================
-# Tool: Book meeting
-# ======================================================
-def book_meeting(
-    summary: str = "General Meeting",
-    start_time: str | None = None,
-    end_time: str | None = None
-) -> str:
-    try:
-        if not start_time or not end_time:
-            return "❌ Please provide both start_time and end_time."
-
-        start = parse_date(
-            start_time,
-            settings={
-                "TIMEZONE": "Asia/Kolkata",
-                "TO_TIMEZONE": "UTC",
-                "RETURN_AS_TIMEZONE_AWARE": True,
-            },
-        )
-        end = parse_date(
-            end_time,
-            settings={
-                "TIMEZONE": "Asia/Kolkata",
-                "TO_TIMEZONE": "UTC",
-                "RETURN_AS_TIMEZONE_AWARE": True,
-            },
-        )
-
-        if not start or not end:
-            return "❌ Couldn't understand the provided time."
-
-        event = book_event(
-            summary,
-            start.isoformat(),
-            end.isoformat()
-        )
-
-        start_fmt = start.astimezone().strftime("%b %d, %I:%M %p")
-        end_fmt = end.astimezone().strftime("%I:%M %p")
-
-        return (
-            f"✅ Meeting **'{summary}'** booked from "
-            f"**{start_fmt} to {end_fmt} IST**.\n"
-            f"🔗 [View in Calendar]({event['htmlLink']})"
-        )
-
-    except Exception as e:
-        return f"❌ Booking failed: {str(e)}"
-
-# ======================================================
-# Tool: Check calendar (NO parameters)
-# ======================================================
-def check_calendar() -> str:
-    try:
-        events = check_availability()
-        if not events:
-            return "✅ You're free!"
-
-        return "\n".join(
-            f"• **{e.get('summary', 'No title')}** at "
-            f"`{e['start'].get('dateTime', e['start'].get('date'))}`"
-            for e in events
-        )
-
-    except Exception as e:
-        return f"❌ Calendar check failed: {str(e)}"
-
-# ======================================================
-# Gemini LLM — FINAL & ONLY WORKING CONFIG
-# ======================================================
-llm = ChatGoogleGenerativeAI(
-    model="models/gemini-1.0-pro",      # ✅ ONLY valid model for v1beta
-    google_api_key=os.getenv("GEMINI_API_KEY"),
-    temperature=0,
-    convert_system_message_to_human=True
-)
-
-# ======================================================
-# Tools
-# ======================================================
-tools = [
-    StructuredTool.from_function(
-        func=book_meeting,
-        name="book_meeting",
-        description="Book a meeting using summary, start_time, and end_time.",
-        args_schema=BookingInput,
-    ),
-    StructuredTool.from_function(
-        func=check_calendar,
-        name="check_calendar",
-        description="Check upcoming Google Calendar events.",
-    ),
-]
-
-# ======================================================
-# Prompt
-# ======================================================
-prompt = ChatPromptTemplate.from_messages(
-    [
-        (
-            "system",
-            "You are TailorTalk, an AI assistant that helps users book meetings and "
-            "check calendars. You understand natural language times."
-        ),
-        ("user", "{input}"),
-        ("assistant", "{agent_scratchpad}")
-    ]
-)
-
-# ======================================================
-# Agent
-# ======================================================
-agent_chain = create_openai_functions_agent(
-    llm=llm,
-    tools=tools,
-    prompt=prompt
-)
-
-agent = AgentExecutor.from_agent_and_tools(
-    agent=agent_chain,
-    tools=tools,
-    verbose=True,
-    handle_parsing_errors=True
-)
-
-# ======================================================
-# Entry point for FastAPI
+# Main intent handler (called by FastAPI)
 # ======================================================
 def handle_intent(user_input: str) -> str:
     try:
-        result = agent.invoke({"input": user_input})
-        return result["output"]
+        prompt = f"""
+You are an assistant that helps users with Google Calendar.
+
+User input:
+"{user_input}"
+
+Decide intent and respond ONLY in valid JSON.
+
+If the user wants to check calendar:
+{{ "intent": "check" }}
+
+If the user wants to book a meeting:
+{{
+  "intent": "book",
+  "summary": "meeting title",
+  "start_time": "natural language time",
+  "end_time": "natural language time"
+}}
+
+Return ONLY JSON. No markdown. No explanation.
+"""
+
+        response = model.generate_content(prompt)
+        data = json.loads(response.text.strip())
+
+        # -----------------------
+        # CHECK CALENDAR
+        # -----------------------
+        if data["intent"] == "check":
+            events = check_availability()
+            if not events:
+                return "✅ You're free!"
+
+            return "\n".join(
+                f"• **{e.get('summary', 'No title')}** at "
+                f"`{e['start'].get('dateTime', e['start'].get('date'))}`"
+                for e in events
+            )
+
+        # -----------------------
+        # BOOK MEETING
+        # -----------------------
+        if data["intent"] == "book":
+            start = parse_date(data["start_time"])
+            end = parse_date(data["end_time"])
+
+            if not start or not end:
+                return "❌ Could not understand the provided time."
+
+            event = book_event(
+                data.get("summary", "Meeting"),
+                start.isoformat(),
+                end.isoformat()
+            )
+
+            return (
+                f"✅ Meeting booked!\n"
+                f"🔗 [View in Calendar]({event['htmlLink']})"
+            )
+
+        return "❌ Unknown intent."
+
     except Exception as e:
-        print("❌ LangChain error:", e)
-        return f"❌ Backend error: {str(e)}"
+        print("❌ Backend error:", e)
+        return f"❌ Error: {str(e)}"
