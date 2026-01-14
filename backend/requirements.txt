@@ -1,16 +1,9 @@
 fastapi
 uvicorn
 python-dotenv
+google-generativeai
 google-api-python-client
 google-auth
 google-auth-oauthlib
 dateparser
-
-
-langchain==0.1.16
-langchain-core==0.1.42
-langchain-community==0.0.32
-langchain-google-genai==0.0.11
-
-
 pydantic<2
