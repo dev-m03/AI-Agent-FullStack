@@ -1,5 +1,6 @@
 import os
 import json
+import re
 from dotenv import load_dotenv
 from dateparser import parse as parse_date
 import google.generativeai as genai
@@ -13,22 +14,25 @@ load_dotenv()
 # ======================================================
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 
-# ======================================================
-# Pick a working text model dynamically (NO HARDCODE)
-# ======================================================
-def get_working_model():
-    for m in genai.list_models():
-        if "generateContent" in m.supported_generation_methods:
-            # Prefer Gemini 1.5 Flash if available
-            if "gemini-1.5-flash" in m.name:
-                return genai.GenerativeModel(m.name)
-    # Fallback: first available text model
-    for m in genai.list_models():
-        if "generateContent" in m.supported_generation_methods:
-            return genai.GenerativeModel(m.name)
-    raise RuntimeError("No usable Gemini model found")
+model = genai.GenerativeModel("gemini-1.5-flash")
 
-model = get_working_model()
+# ======================================================
+# Helper: safely extract JSON from LLM output
+# ======================================================
+def extract_json(text: str) -> dict:
+    """
+    Extract the first JSON object from text.
+    Works even if Gemini adds extra text.
+    """
+    try:
+        # Direct JSON
+        return json.loads(text)
+    except:
+        # Try extracting JSON block
+        match = re.search(r"\{.*\}", text, re.DOTALL)
+        if not match:
+            raise ValueError("No JSON found in LLM response")
+        return json.loads(match.group())
 
 # ======================================================
 # Main intent handler
@@ -36,12 +40,15 @@ model = get_working_model()
 def handle_intent(user_input: str) -> str:
     try:
         prompt = f"""
-You help users manage Google Calendar.
+You are a backend system. You MUST respond in valid JSON only.
 
 User message:
 "{user_input}"
 
-Respond ONLY in valid JSON.
+Rules:
+- NO markdown
+- NO explanation
+- ONLY JSON
 
 If user wants to check calendar:
 {{ "intent": "check" }}
@@ -53,15 +60,13 @@ If user wants to book a meeting:
   "start_time": "natural language time",
   "end_time": "natural language time"
 }}
-
-Return ONLY JSON.
 """
 
         response = model.generate_content(prompt)
-        data = json.loads(response.text.strip())
+        data = extract_json(response.text)
 
         # ---------------- CHECK CALENDAR ----------------
-        if data["intent"] == "check":
+        if data.get("intent") == "check":
             events = check_availability()
             if not events:
                 return "✅ You're free!"
@@ -73,9 +78,9 @@ Return ONLY JSON.
             )
 
         # ---------------- BOOK MEETING ----------------
-        if data["intent"] == "book":
-            start = parse_date(data["start_time"])
-            end = parse_date(data["end_time"])
+        if data.get("intent") == "book":
+            start = parse_date(data.get("start_time"))
+            end = parse_date(data.get("end_time"))
 
             if not start or not end:
                 return "❌ Could not understand the provided time."
@@ -91,8 +96,8 @@ Return ONLY JSON.
                 f"🔗 [View in Calendar]({event['htmlLink']})"
             )
 
-        return "❌ Unknown intent."
+        return "❌ I couldn’t understand your request."
 
     except Exception as e:
         print("❌ Backend error:", e)
-        return f"❌ Error: {str(e)}"
+        return "❌ Something went wrong. Please try again."
